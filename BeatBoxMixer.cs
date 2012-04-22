@@ -17,7 +17,10 @@ namespace BeatBox
         private int _beatIndex;
         private readonly int _bpm;
         private long _byteCounter;
-        private readonly int _bytesPerBeat;
+        private int _bytesPerBeat;
+        private readonly int _bytesPerBeatHigh;
+        private readonly int _bytesPerBeatLow;
+        private readonly bool _oddBytesPerBeat;
         private readonly List<WaveDataReader> _readers;
         private readonly List<Track> _tracks;
 
@@ -41,6 +44,13 @@ namespace BeatBox
             }
 
             _bytesPerBeat = CalculateBytesPerBeat(bpm, samplesPerSecond);
+            if (_bytesPerBeat % 2 != 0)
+            {
+                _oddBytesPerBeat = true;
+                _bytesPerBeatLow = _bytesPerBeat - 1;
+                _bytesPerBeatHigh = _bytesPerBeat + 1;
+                _bytesPerBeat = _bytesPerBeatLow;
+            }
 
             _readers = new List<WaveDataReader>();
             _beatIndex = 0;
@@ -135,6 +145,19 @@ namespace BeatBox
                 {
                     _beatIndex = _beatIndex - BEATS_PER_TRACK;
                 }
+
+                if (_oddBytesPerBeat)
+                {
+                    if (_beatIndex % 2 == 0)
+                    {
+                        _bytesPerBeat = _bytesPerBeatLow;
+                    }
+                    else
+                    {
+                        _bytesPerBeat = _bytesPerBeatHigh;
+                    }
+                }
+
                 LoadReadersAtBeat(_beatIndex);
             }
 
@@ -146,23 +169,37 @@ namespace BeatBox
 
         private void ReadMixedBytes(byte[] buffer, int offset, int count)
         {
-            for (int i = 0; i < count; i++)
+            /* note: our output is 16-bit mono, so the number of samples is the number of
+             * bytes / 2 */
+            int samples = count / 2;
+            int byteIndex = offset;
+            for (int i = 0; i < samples; i++)
             {
-                buffer[offset + i] = 0;
                 /* note: traverse the readers in reverse order so that we may remove
                  * them as we go if they are emptied */
+                short readerSample;
+                int mixedSample = 0;
                 for (int r = _readers.Count - 1; r >= 0; r--)
                 {
-                    int read = _readers[r].ReadByte();
-                    if (read == -1)
+                    if (_readers[r].Position >= _readers[r].Length)
                     {
+                        readerSample = 0;
                         _readers.RemoveAt(r);
                     }
                     else
                     {
-                        buffer[offset + i] = (byte)read;
+                        readerSample = _readers[r].ReadSample();
                     }
+                    mixedSample += readerSample;
                 }
+
+                /* ensure the mixed value fits in a 16-bit integer */
+                mixedSample = mixedSample > 32767 ? 32767 : (mixedSample < -32768 ? -32768 : mixedSample);
+
+                byte[] sampleBytes = BitConverter.GetBytes(mixedSample);
+                buffer[byteIndex] = sampleBytes[0];
+                buffer[byteIndex + 1] = sampleBytes[1];
+                byteIndex += 2;
             }
         }
 

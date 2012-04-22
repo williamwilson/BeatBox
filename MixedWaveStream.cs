@@ -107,7 +107,7 @@ namespace BeatBox
                 }
             }
 
-            return result > 32767 ? (short)23765 : (result < -32765 ? (short)-32765 : (short)result);
+            return result > 32767 ? (short)32765 : (result < -32765 ? (short)-32765 : (short)result);
         }
 
         public override bool CanRead

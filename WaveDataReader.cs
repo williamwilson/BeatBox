@@ -42,6 +42,18 @@ namespace BeatBox
             get { return _data.SampleCount; }
         }
 
+        /// <summary>
+        /// Reads a sample from the wave data.
+        /// </summary>
+        /// <returns>The value of the sample.</returns>
+        public short ReadSample()
+        {
+            /* note: this assumes 16-bit mono samples */
+            short sample = BitConverter.ToInt16(_data.Data, (int)_position);
+            _position += 2;
+            return sample;
+        }
+
         #region Stream implementation
 
         public override bool CanRead

@@ -50,9 +50,17 @@ namespace BeatBox
                 Device playbackDevice = new Device(currentDevice.DriverGuid);
                 playbackDevice.SetCooperativeLevel(_windowHandle, CooperativeLevel.Normal);
 
-                Track track = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true });
-                BeatBoxMixer mixer = new BeatBoxMixer(192, new Track[] { track });
-                StreamPlayer player = new StreamPlayer(playbackDevice, track.Format, mixer);
+                Track track1 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, false, false, true, true, false, false, false, true, false, false, true, true, false, false, false });
+                Track track2 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\open.wav"), new bool[] { false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, true });
+                Track track3 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\snare.wav"), new bool[] { false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false });
+                Track track4 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\closed.wav"), new bool[] { true, true, false, true, true, true, false, false, true, true, false, true, true, true, false, false });
+
+                BeatBoxMixer mixer = new BeatBoxMixer(120, new Track[] { track1, track2, track3, track4 });
+
+                //Track track1 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true });
+                //BeatBoxMixer mixer = new BeatBoxMixer(240, new Track[] { track1 });
+
+                StreamPlayer player = new StreamPlayer(playbackDevice, track1.Format, mixer);
                 player.Play();
             }
         }
