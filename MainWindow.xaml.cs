@@ -30,5 +30,18 @@ namespace BeatBox
             interopHelper.EnsureHandle();
             DataContext = new BeatBoxViewModel(interopHelper.Handle);
         }
+
+        private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left)
+            {
+                this.DragMove();
+            }
+        }
+
+        private void PowerButton_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
     }
 }

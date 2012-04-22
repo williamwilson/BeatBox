@@ -11,10 +11,14 @@ using System.IO;
 
 namespace BeatBox
 {
-    internal sealed class BeatBoxViewModel
+    internal sealed class BeatBoxViewModel : ViewModelBase
     {
+        private int _bpm;
         private readonly ICollectionView _devices;
         private readonly ICommand _playCommand;
+        private StreamPlayer _player;
+        private readonly ICommand _stopCommand;
+        private readonly List<TrackViewModel> _tracks;
         private readonly IntPtr _windowHandle; // unless DirectSound is abstracted away, this is necessary
 
         public BeatBoxViewModel(IntPtr windowHandle)
@@ -28,40 +32,106 @@ namespace BeatBox
             }
 
             _devices = CollectionViewSource.GetDefaultView(devices);
+            _bpm = 120;
             _playCommand = new DelegateCommand(Play);
+            _stopCommand = new DelegateCommand(Stop);
+            _tracks = new List<TrackViewModel>();
+            _tracks.Add(new TrackViewModel("Bass", @"samples\bass.wav", new bool[] { true, false, false, true, true, false, false, false, true, false, false, true, true, false, false, false }));
+            _tracks.Add(new TrackViewModel("Open", @"samples\open.wav", new bool[] { false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, true }));
+            _tracks.Add(new TrackViewModel("Snare", @"samples\snare.wav", new bool[] { false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false }));
+            _tracks.Add(new TrackViewModel("Closed", @"samples\closed.wav", new bool[] { true, true, false, true, true, true, false, false, true, true, false, true, true, true, false, false }));
             _windowHandle = windowHandle;
         }
 
+        /// <summary>
+        /// Gets or sets the number of beats per minute of the mix.
+        /// </summary>
+        public int BeatsPerMinute
+        {
+            get { return _bpm; }
+            set
+            {
+                _bpm = value;
+                OnPropertyChanged("BeatsPerMinute");
+            }
+        }
+
+        /// <summary>
+        /// Gets the list of devices available for playback.
+        /// </summary>
         public ICollectionView Devices
         {
             get { return _devices; }
         }
 
+        /// <summary>
+        /// Gets the command which starts playback.
+        /// </summary>
         public ICommand PlayCommand
         {
             get { return _playCommand; }
         }
 
+        /// <summary>
+        /// Gets the command which stops playback.
+        /// </summary>
+        public ICommand StopCommand
+        {
+            get { return _stopCommand; }
+        }
+
+        /// <summary>
+        /// Gets the list of tracks to be mixed.
+        /// </summary>
+        public IEnumerable<TrackViewModel> Tracks
+        {
+            get { return _tracks; }
+        }
+
+        /// <summary>
+        /// Starts playback on the currently selected device with the current tracks.
+        /// </summary>
+        /// <param name="parameter"></param>
         private void Play(object parameter)
         {
             DeviceViewModel currentDevice = (DeviceViewModel)_devices.CurrentItem;
             if (currentDevice != null)
             {
+                if (_player != null)
+                {
+                    _player.Stop();
+                    _player.Dispose();
+                    _player = null;
+                }
+
                 Device playbackDevice = new Device(currentDevice.DriverGuid);
                 playbackDevice.SetCooperativeLevel(_windowHandle, CooperativeLevel.Normal);
 
-                Track track1 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, false, false, true, true, false, false, false, true, false, false, true, true, false, false, false });
-                Track track2 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\open.wav"), new bool[] { false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, true });
-                Track track3 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\snare.wav"), new bool[] { false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false });
-                Track track4 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\closed.wav"), new bool[] { true, true, false, true, true, true, false, false, true, true, false, true, true, true, false, false });
+                Track[] tracks = new Track[_tracks.Count];
+                int t = 0;
+                foreach (TrackViewModel track in _tracks)
+                {
+                    tracks[t] = new Track(WaveData.FromFile(track.FilePath), track.GetBeatArray());
+                    t++;
+                }
 
-                BeatBoxMixer mixer = new BeatBoxMixer(120, new Track[] { track1, track2, track3, track4 });
+                BeatBoxMixer mixer = new BeatBoxMixer(_bpm, tracks);                
+                _player = new StreamPlayer(playbackDevice, tracks[0].Format, mixer);
+                _player.Play();
+            }
+        }
 
-                //Track track1 = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true });
-                //BeatBoxMixer mixer = new BeatBoxMixer(240, new Track[] { track1 });
-
-                StreamPlayer player = new StreamPlayer(playbackDevice, track1.Format, mixer);
-                player.Play();
+        /// <summary>
+        /// Stops playback.
+        /// </summary>
+        /// <param name="parameter"></param>
+        private void Stop(object parameter)
+        {
+            if (_player != null)
+            {
+                _player.Stop();
+                _player.Dispose();
+                _player = null;
             }
         }
     }
@@ -97,6 +167,65 @@ namespace BeatBox
         public override string ToString()
         {
             return string.Format("{0}: {1} ({2})", _name, _description, _driverGuid);
+        }
+    }
+
+    internal sealed class TrackViewModel : ViewModelBase
+    {
+        public TrackViewModel(string name, string filePath, bool[] beats)
+        {
+            Name = name;
+            FilePath = filePath;
+            Beats = new List<BeatViewModel>();
+            foreach (bool beat in beats)
+            {
+                Beats.Add(new BeatViewModel(beat));
+            }
+        }
+
+        public List<BeatViewModel> Beats
+        {
+            get;
+            private set;
+        }
+
+        public string FilePath
+        {
+            get;
+            private set;
+        }
+
+        public string Name
+        {
+            get;
+            private set;
+        }
+
+        public bool[] GetBeatArray()
+        {
+            bool[] beats = new bool[Beats.Count];
+            int b = 0;
+            foreach (BeatViewModel beat in Beats)
+            {
+                beats[b++] = beat.Set;
+            }
+            return beats;
+        }
+    }
+
+    internal sealed class BeatViewModel : ViewModelBase
+    {
+        private bool _set;
+
+        public BeatViewModel(bool set)
+        {
+            _set = set;
+        }
+
+        public bool Set
+        {
+            get { return _set; }
+            set { _set = value; OnPropertyChanged("Set"); }
         }
     }
 

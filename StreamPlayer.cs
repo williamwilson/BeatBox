@@ -12,7 +12,7 @@ namespace BeatBox
     /// This class uses a circular playback buffer and continually reads the data from the supplied
     /// stream into this circular buffer until the entire stream has been played.
     /// </remarks>
-    internal sealed class StreamPlayer
+    internal sealed class StreamPlayer : IDisposable
     {
         private readonly SecondaryBuffer _buffer;
         private readonly int _bufferLength;
@@ -46,6 +46,20 @@ namespace BeatBox
             _feedTimer = new Timer();
             _feedTimer.Interval = 250;
             _feedTimer.Tick += new EventHandler(FeedTimer_Tick);
+        }
+
+        public void Dispose()
+        {
+            _buffer.Stop();
+            _buffer.Dispose();
+
+            _feedTimer.Stop();
+            _feedTimer.Dispose();
+
+            _playbackDevice.Dispose();
+
+            _stream.Close();
+            _stream.Dispose();
         }
 
         /// <summary>
