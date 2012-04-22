@@ -49,10 +49,11 @@ namespace BeatBox
             {
                 Device playbackDevice = new Device(currentDevice.DriverGuid);
                 playbackDevice.SetCooperativeLevel(_windowHandle, CooperativeLevel.Normal);
-                //SecondaryBuffer wavBuffer = new SecondaryBuffer(@"C:\Windows\winsxs\amd64_microsoft-windows-s..-soundthemes-sonata_31bf3856ad364e35_6.1.7600.16385_none_201752c112c5078c\Windows Ding.wav", playbackDevice);
-                //wavBuffer.Play(0, BufferPlayFlags.Default);
-                BeatBox beatBox = new BeatBox(playbackDevice, new WaveFormat() { FormatTag = WaveFormatTag.Pcm, SamplesPerSecond = 22050, Channels = 1, BitsPerSample = 16, BlockAlign = 2, AverageBytesPerSecond = 44100 });
-                beatBox.Play();
+
+                Track track = new Track(WaveData.FromFile(@"d:\dev\beatbox\samples\bass.wav"), new bool[] { true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true });
+                BeatBoxMixer mixer = new BeatBoxMixer(192, new Track[] { track });
+                StreamPlayer player = new StreamPlayer(playbackDevice, track.Format, mixer);
+                player.Play();
             }
         }
     }

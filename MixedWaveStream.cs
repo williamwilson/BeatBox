@@ -11,7 +11,7 @@ namespace BeatBox
         private readonly MemoryStream _data;
         private readonly WaveFormat _format;
 
-        public MixedWaveStream(WaveDataStream left, WaveDataStream right)
+        public MixedWaveStream(WaveDataReader left, WaveDataReader right)
         {
             /* note: I don't know how to re-sample, so the two streams must be sampled
              * at the same rate */
@@ -38,8 +38,8 @@ namespace BeatBox
             long maxSampleCount = Math.Max(leftSampleCount, rightSampleCount);
             _data = new MemoryStream(new byte[maxSampleCount * 2]);
             int sampleIndex = 0;
-            left.Seek(0, SeekOrigin.Begin);
-            right.Seek(0, SeekOrigin.Begin);
+            //left.Seek(0, SeekOrigin.Begin);
+            //right.Seek(0, SeekOrigin.Begin);
             BinaryReader leftReader = new BinaryReader(left);
             BinaryReader rightReader = new BinaryReader(right);
             BinaryWriter writer = new BinaryWriter(_data);

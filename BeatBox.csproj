@@ -64,9 +64,11 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="StreamPlayer.cs" />
     <Compile Include="Track.cs" />
     <Compile Include="ViewModelBase.cs" />
-    <Compile Include="WaveDataStream.cs" />
+    <Compile Include="WaveData.cs" />
+    <Compile Include="WaveDataReader.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

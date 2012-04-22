@@ -2,103 +2,185 @@
 using System.Timers;
 using Microsoft.DirectX.DirectSound;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BeatBox
 {
     /// <summary>
-    /// Represents a mixer which manages a set of tracks and produces a single output stream.
+    /// Represents a mixer which manages a set of tracks and produces a single mixed output stream.
     /// </summary>
-    internal sealed class BeatBox
+    internal sealed class BeatBoxMixer : Stream
     {
-        private static readonly WaveDataStream _rimSample;
-        private static readonly WaveDataStream _bassSample;
-        private static readonly MixedWaveStream _mixedStream;
+        private const int BEATS_PER_TRACK = 16;
 
-        static BeatBox()
+        private int _beatIndex;
+        private readonly int _bpm;
+        private long _byteCounter;
+        private readonly int _bytesPerBeat;
+        private readonly List<WaveDataReader> _readers;
+        private readonly List<Track> _tracks;
+
+        public BeatBoxMixer(int bpm, IEnumerable<Track> tracks)
         {
-            _bassSample = WaveDataStream.FromFile(@"d:\dev\beatbox\samples\bass.wav");
-            _rimSample = WaveDataStream.FromFile(@"d:\dev\beatbox\samples\open.wav");
+            _bpm = bpm;
+            _tracks = new List<Track>(tracks);
 
-            _mixedStream = new MixedWaveStream(_bassSample, _rimSample);
-        }
+            if (_tracks.Count == 0)
+            {
+                throw new ArgumentException("One or more tracks must be supplied.");
+            }
 
-        private readonly SecondaryBuffer _buffer;
-        private readonly int _bufferLength;
-        private readonly Device _playbackDevice;
-        private readonly Timer _timer;
-        private int _writeIndex;
+            int samplesPerSecond = _tracks.First().Format.SamplesPerSecond;
+            foreach (Track track in _tracks)
+            {
+                if (track.Format.SamplesPerSecond != samplesPerSecond)
+                {
+                    throw new ArgumentException("All tracks must have the same sample rate.");
+                }
+            }
 
-        public BeatBox(Device playbackDevice, WaveFormat format)
-        {
-            _playbackDevice = playbackDevice;
+            _bytesPerBeat = CalculateBytesPerBeat(bpm, samplesPerSecond);
 
-            BufferDescription bufferDescription = new BufferDescription(format);
-            bufferDescription.BufferBytes = format.AverageBytesPerSecond;
-            bufferDescription.ControlVolume = true;
-            bufferDescription.GlobalFocus = true;
-
-            _buffer = new SecondaryBuffer(bufferDescription, playbackDevice);
-            _bufferLength = _buffer.Caps.BufferBytes;
-
-            _timer = new Timer(250);
-            _timer.Elapsed += new ElapsedEventHandler(TimerElapsed);
+            _readers = new List<WaveDataReader>();
+            _beatIndex = 0;
+            _byteCounter = 0;
+            LoadReadersAtBeat(0);
         }
 
         /// <summary>
-        /// Feeds the specified number of bytes into the play buffer.
+        /// Calculates the number of bytes in the output stream per beat.
         /// </summary>
-        /// <param name="numBytes">The number of bytes to feed into the buffer.</param>
-        private void Feed(int numBytes)
+        /// <param name="bpm">The number of beats per minute.</param>
+        /// <returns>The number of bytes in the output stream per beat.</returns>
+        private static int CalculateBytesPerBeat(int bpm, int samplesPerSecond)
         {
-            int bytesToWrite = Math.Min((int)(_mixedStream.Length - _mixedStream.Position), numBytes);
-            _buffer.Write(_writeIndex, _mixedStream, bytesToWrite, LockFlag.None);
-            
-            if (_mixedStream.Position == _mixedStream.Length)
+            /* note: the output of the mixer is a 16-bit mono stream */
+            int bytesPerSecond = samplesPerSecond * 2;
+            int bytesPerMinute = bytesPerSecond * 60;
+
+            return bytesPerMinute / bpm;
+        }
+
+        private void LoadReadersAtBeat(int beatIndex)
+        {
+            foreach (Track track in _tracks)
             {
-                _mixedStream.Seek(0, SeekOrigin.Begin);
+                WaveDataReader reader = track.GetReaderAtBeat(beatIndex);
+                if (reader != null)
+                {
+                    _readers.Add(reader);
+                }
+            }
+        }
+
+        #region Stream implementation
+
+        public override bool CanRead
+        {
+            get { return true; }
+        }
+
+        public override bool CanSeek
+        {
+            get { return false; }
+        }
+
+        public override bool CanWrite
+        {
+            get { return false; }
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Length
+        {
+            get
+            {
+                /* note: really the length is infinite as read will always return the requested
+                 * number of bytes */
+                return 100000;
+            }
+        }
+
+        public override long Position
+        {
+            get
+            {
+                return 0;
+            }
+            set
+            {
+                throw new UnsupportedException();
+            }
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            while (_byteCounter + count >= _bytesPerBeat)
+            {
+                /* get the bytes up to the next beat */
+                int bytesRemainingInBeat = (int)(_bytesPerBeat - _byteCounter);
+                ReadMixedBytes(buffer, offset, bytesRemainingInBeat);
+
+                offset += bytesRemainingInBeat;
+                count -= bytesRemainingInBeat;
+
+                /* populate the readers for the next beat */
+                _beatIndex++;
+                _byteCounter = 0;
+                if (_beatIndex == BEATS_PER_TRACK)
+                {
+                    _beatIndex = _beatIndex - BEATS_PER_TRACK;
+                }
+                LoadReadersAtBeat(_beatIndex);
             }
 
-            _writeIndex += bytesToWrite;
-            _writeIndex = _writeIndex >= _bufferLength ? 0 : _writeIndex;
+            ReadMixedBytes(buffer, offset, count);
+            _byteCounter += count;
+
+            return count;
         }
 
-        public void Play()
+        private void ReadMixedBytes(byte[] buffer, int offset, int count)
         {
-            Stop();
-
-            /* reset the buffer */
-            _buffer.SetCurrentPosition(0);
-            _writeIndex = 0;
-            _mixedStream.Seek(0, SeekOrigin.Begin);
-
-            Feed(_bufferLength);
-
-            _timer.Start();
-            _buffer.Play(0, BufferPlayFlags.Looping);
-        }
-
-        public void Stop()
-        {
-            _timer.Stop();
-            _buffer.Stop();
-        }
-
-        private void TimerElapsed(object sender, ElapsedEventArgs e)
-        {
-            /* determine the number of bytes which have been played */
-            int played = 0;
-            int position = _buffer.PlayPosition;
-            if (position < _writeIndex)
+            for (int i = 0; i < count; i++)
             {
-                /* the playback wrapped around to the beginning of the buffer */
-                played = _bufferLength - _writeIndex + position;
+                buffer[offset + i] = 0;
+                /* note: traverse the readers in reverse order so that we may remove
+                 * them as we go if they are emptied */
+                for (int r = _readers.Count - 1; r >= 0; r--)
+                {
+                    int read = _readers[r].ReadByte();
+                    if (read == -1)
+                    {
+                        _readers.RemoveAt(r);
+                    }
+                    else
+                    {
+                        buffer[offset + i] = (byte)read;
+                    }
+                }
             }
-            else
-            {
-                played = position - _writeIndex;
-            }
-
-            Feed(played);
         }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new UnsupportedException();
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new UnsupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new UnsupportedException();
+        }
+
+        #endregion
     }
 }
